@@ -1,5 +1,5 @@
 #!/bin/bash
-# OpenClaw Auto-Hardening Script
+# OpenClaw Auto-Hardening Script — Cross-platform (macOS + Linux)
 # Fixes common security issues automatically
 # Usage: bash harden.sh [--dry-run]
 
@@ -10,6 +10,11 @@ WORKSPACE="$OPENCLAW_DIR/workspace"
 CONFIG="$OPENCLAW_DIR/openclaw.json"
 DRY_RUN="${1:-}"
 FIXED=0
+
+# Cross-platform permission getter
+get_perm() {
+    stat -f "%Sp" "$1" 2>/dev/null || stat -c "%A" "$1" 2>/dev/null || echo "UNKNOWN"
+}
 
 fix() {
     local desc="$1"
@@ -27,21 +32,36 @@ echo "   Started: $(date '+%Y-%m-%d %H:%M')"
 echo ""
 
 # ═══════════════════════════════════════
+# Pre-flight
+# ═══════════════════════════════════════
+if [ ! -d "$OPENCLAW_DIR" ]; then
+    echo "❌ OpenClaw directory not found: $OPENCLAW_DIR"
+    exit 1
+fi
+
+if [ ! -f "$CONFIG" ]; then
+    echo "❌ Config file not found: $CONFIG"
+    exit 1
+fi
+
+# ═══════════════════════════════════════
 # Fix 1: Directory Permissions
 # ═══════════════════════════════════════
 echo "═══ Directory Permissions ═══"
 for d in "$OPENCLAW_DIR/credentials" "$OPENCLAW_DIR/identity" \
          "$OPENCLAW_DIR/logs" "$OPENCLAW_DIR/browser" "$WORKSPACE/memory"; do
     if [ -d "$d" ]; then
-        perm=$(stat -f "%Sp" "$d" 2>/dev/null)
-        if [ "$perm" != "drwx------" ]; then
+        perm=$(get_perm "$d")
+        if [ "$perm" = "drwx------" ] || [ "$perm" = "700" ]; then
+            echo "  ✅ $d: $perm"
+        else
             if [ "$DRY_RUN" != "--dry-run" ]; then
                 chmod 700 "$d"
             fi
-            fix "Directory $d: $perm → drwx------"
-        else
-            echo "  ✅ $d: $perm"
+            fix "Directory $d: $perm → 700"
         fi
+    else
+        echo "  ⏭️  $d: not found (skipped)"
     fi
 done
 
@@ -52,15 +72,17 @@ echo ""
 echo "═══ File Permissions ═══"
 for f in "$CONFIG" "$OPENCLAW_DIR/.env"; do
     if [ -f "$f" ]; then
-        perm=$(stat -f "%Sp" "$f" 2>/dev/null)
-        if [ "$perm" != "-rw-------" ]; then
+        perm=$(get_perm "$f")
+        if [ "$perm" = "-rw-------" ] || [ "$perm" = "600" ]; then
+            echo "  ✅ $f: $perm"
+        else
             if [ "$DRY_RUN" != "--dry-run" ]; then
                 chmod 600 "$f"
             fi
-            fix "File $f: $perm → -rw-------"
-        else
-            echo "  ✅ $f: $perm"
+            fix "File $f: $perm → 600"
         fi
+    else
+        echo "  ⏭️  $f: not found (skipped)"
     fi
 done
 
@@ -127,8 +149,9 @@ if [ "$DRY_RUN" != "--dry-run" ]; then
     if [ "$count" -gt 10 ]; then
         remove=$((count - 10))
         ls -1t "$BACKUP_DIR"/openclaw.json.* | tail -n "$remove" | xargs rm -f
+        echo "🧹 Cleaned up $remove old backups"
     fi
-    fix "Config backed up to $BACKUP_DIR/openclaw.json.$TIMESTAMP"
+    fix "Config backed up to openclaw.json.$TIMESTAMP"
 else
     echo "  🔍 [DRY RUN] Would backup config"
 fi
