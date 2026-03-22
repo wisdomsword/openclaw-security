@@ -87,7 +87,64 @@ for f in "$CONFIG" "$OPENCLAW_DIR/.env"; do
 done
 
 # ═══════════════════════════════════════
-# Fix 3: Create .gitignore if missing
+# Fix 3: Validate and fix config structure
+# ═══════════════════════════════════════
+echo ""
+echo "═══ Config Structure Validation ═══"
+if command -v python3 &>/dev/null; then
+    python3 - "$CONFIG" "$DRY_RUN" <<'PYEOF'
+import json, sys
+
+config_path = sys.argv[1]
+dry_run = sys.argv[2] == "--dry-run"
+
+with open(config_path) as f:
+    d = json.load(f)
+
+fixed = False
+
+# Check sandbox is object, not string
+agents = d.get("agents", {}).get("defaults", {})
+sandbox = agents.get("sandbox")
+if isinstance(sandbox, str):
+    if not dry_run:
+        agents["sandbox"] = {"mode": sandbox}
+        fixed = True
+    print(f"🔧 {'Would fix' if dry_run else 'Fixed'}: sandbox: \"{sandbox}\" → {{ \"mode\": \"{sandbox}\" }}")
+
+# Check tools.fs is object, not bool
+tools = d.get("tools", {})
+fs = tools.get("fs")
+if isinstance(fs, bool):
+    if not dry_run:
+        tools["fs"] = {"workspaceOnly": fs}
+        fixed = True
+    print(f"🔧 {'Would fix' if dry_run else 'Fixed'}: tools.fs: {fs} → {{ \"workspaceOnly\": {fs} }}")
+
+# Check gateway.auth is object, not string
+gw = d.get("gateway", {})
+auth = gw.get("auth")
+if isinstance(auth, str):
+    if not dry_run:
+        gw["auth"] = {"mode": auth}
+        fixed = True
+    print(f"🔧 {'Would fix' if dry_run else 'Fixed'}: gateway.auth: \"{auth}\" → {{ \"mode\": \"{auth}\" }}")
+
+if not fixed:
+    print("  ✅ Config structure valid")
+
+if fixed and not dry_run:
+    with open(config_path, "w") as f:
+        json.dump(d, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    print("  💾 Config saved")
+PYEOF
+else
+    echo "  ⏭️  python3 not available — skipping config validation"
+fi
+
+# ═══════════════════════════════════════
+# Fix 4: Create .gitignore if missing
 # ═══════════════════════════════════════
 echo ""
 echo "═══ Gitignore ═══"
@@ -135,7 +192,7 @@ else
 fi
 
 # ═══════════════════════════════════════
-# Fix 4: Config backup
+# Fix 5: Config backup
 # ═══════════════════════════════════════
 echo ""
 echo "═══ Config Backup ═══"

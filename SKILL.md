@@ -1,6 +1,6 @@
 ---
 name: openclaw-security
-version: "2.0.2"
+version: "2.0.3"
 description: OpenClaw 安全加固与监控 Skill。覆盖 9 层防御体系：群聊白名单、文件隔离、DM 配对、网络隔离、隐私隔离、目录权限、Cron 隔离、自动审计、配置版本管理。支持单次审计/加固、每日定时检查。
 tags: [security, audit, hardening, openclaw, monitoring, credentials, privacy]
 category: security
@@ -34,6 +34,66 @@ find ~/.openclaw/workspace/skills -name "SKILL.md" -path "*/openclaw-security/*"
 ```
 
 后续所有命令使用 `$SKILL_DIR` 变量代替路径。
+
+## ⚠️ 配置修改规范（必读）
+
+**修改 `openclaw.json` 前，必须严格遵守以下规范。错误的 JSON 结构会导致 Gateway 崩溃。**
+
+### 安全加固配置模板
+
+以下是 `openclaw.json` 中所有安全相关字段的**正确结构**：
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "enabled": true,
+      "appId": "cli_xxx",
+      "appSecret": "xxx",
+      "domain": "feishu",
+      "groupPolicy": "allowlist",
+      "groupAllowFrom": ["ou_xxxxxxxxxxxxxxxx"],
+      "dmPolicy": "pairing"
+    }
+  },
+  "tools": {
+    "profile": "full",
+    "fs": {
+      "workspaceOnly": true
+    }
+  },
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "mode": "off"
+      }
+    }
+  },
+  "gateway": {
+    "bind": "loopback",
+    "auth": {
+      "mode": "token",
+      "token": "your-token-here"
+    }
+  }
+}
+```
+
+### 常见错误
+
+| 错误写法 | 正确写法 | 说明 |
+|---------|---------|------|
+| `"sandbox": "off"` | `"sandbox": { "mode": "off" }` | sandbox 必须是对象 |
+| `"sandbox": "inherit"` | `"sandbox": { "mode": "inherit" }` | 同上 |
+| `"fs": true` | `"fs": { "workspaceOnly": true }` | fs 必须是对象 |
+| `"auth": "token"` | `"auth": { "mode": "token", "token": "xxx" }` | auth 必须是对象 |
+
+### 修改流程
+
+1. **备份**：修改前执行 `cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak`
+2. **修改**：使用 `edit` 工具精确替换，不要重写整个文件
+3. **验证**：修改后执行 `python3 -c "import json; json.load(open('$HOME/.openclaw/openclaw.json'))"` 确认 JSON 合法
+4. **重启**：`openclaw gateway restart`
 
 ## 使用方式
 
