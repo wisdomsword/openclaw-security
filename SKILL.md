@@ -58,6 +58,29 @@ Requires user confirmation: `openclaw.json` field changes, gateway restart, cred
 
 Full template: `check-config.sh` shows the correct structure.
 
+## Key Security
+
+**Current model:** `.env` (600) → Gateway loads → env vars → agent tools. `workspaceOnly` protects `read/write/edit` but **NOT `exec`**.
+
+**Defense layers:**
+| Layer | Status | Effect |
+|-------|--------|--------|
+| File perms 600 | ✅ | Only owner reads .env/openclaw.json |
+| workspaceOnly | ✅ | Blocks file tools (not exec) |
+| Group whitelist | ✅ | Only whitelisted users trigger agent |
+| DM pairing | ✅ | Private chats require pairing |
+| SecureClaw Rule 8 | ✅ | Blocks read→send exfiltration pattern |
+| Exec sandbox | ⏸️ | Off by default (personal use) |
+
+**Sandbox mode (strongest protection):** Isolates exec in sandbox, blocks host file access. Tradeoff: limits `brew install`, `openclaw gateway`, etc.
+
+To enable — **requires owner approval:**
+```json
+"agents": { "defaults": { "sandbox": { "mode": "all" } } }
+```
+
+**Personal assistant threat model:** Single trust boundary, one owner. Current layered defense is sufficient. Only attack path is prompt injection → `cat .env` → message exfiltration, blocked by SecureClaw Rule 8.
+
 ## Cron Setup
 
 ```bash

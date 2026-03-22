@@ -86,7 +86,15 @@ if [ -d "$WS/.git" ]; then
     else log P "Git History" "No commits"; fi
 else log P "Git History" "No git repo"; fi
 
-# 2e Network
+# 2e Key exposure
+if [ -f "$OC/.env" ]; then
+    env_export=$(grep -c "^export " "$OC/.env" 2>/dev/null || echo 0)
+    [ "$env_export" -gt 0 ] && log W "Env Exports" "$env_export export(s) in .env — remove 'export' prefix if not needed" || log P "Env Exports" "No unnecessary exports"
+    env_perms=$(perm "$OC/.env")
+    [[ "$env_perms" = "-rw-------" || "$env_perms" = "600" ]] && log P "Env Perms" ".env locked to owner" || log H "Env Perms" ".env is $env_perms — should be 600"
+fi
+
+# 2f Network
 net=$(python3 - "$CF" <<'PY'
 import json,sys; d=json.load(open(sys.argv[1])); g=d.get("gateway",{})
 b=g.get("bind","?"); a=g.get("auth",{})
@@ -97,7 +105,7 @@ PY
 )
 while IFS='|' read -r s n d; do [ -n "$s" ] && log "$s" "Network: $n" "$d"; done <<< "$net"
 
-# 2f Cron
+# 2g Cron
 if command -v openclaw &>/dev/null; then
     cron_out=$(openclaw cron list 2>/dev/null || echo "")
     if [ -n "$cron_out" ]; then

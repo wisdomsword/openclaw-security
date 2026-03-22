@@ -55,6 +55,29 @@ bash "$SKILL_DIR/scripts/config-backup.sh"    # 备份配置
 - `"fs": true` → `{ "workspaceOnly": true }`
 - `"auth": "token"` → `{ "mode": "token" }`
 
+## 密钥安全
+
+**当前模型：** `.env`（600）→ Gateway 启动时读取 → 注入环境变量 → agent 工具可用。`workspaceOnly` 保护 `read/write/edit`，但**不保护 `exec`**。
+
+**防御层级：**
+| 层级 | 状态 | 效果 |
+|------|------|------|
+| 文件权限 600 | ✅ | 仅 owner 可读 .env/openclaw.json |
+| workspaceOnly | ✅ | 阻止文件工具（exec 除外） |
+| 群聊白名单 | ✅ | 仅白名单用户可触发 |
+| DM 配对 | ✅ | 私聊需配对确认 |
+| SecureClaw Rule 8 | ✅ | 阻止 读取→发送 泄露模式 |
+| Exec 沙箱 | ⏸️ | 默认关闭（个人使用） |
+
+**沙箱模式（最强保护）：** 隔离 exec 环境，阻止访问宿主文件。代价：限制 `brew install`、`openclaw gateway` 等操作。
+
+启用需**主人批准：**
+```json
+"agents": { "defaults": { "sandbox": { "mode": "all" } } }
+```
+
+**个人助手威胁模型：** 单一信任边界，一个主人。当前分层防御已足够。唯一攻击路径是 prompt injection → `cat .env` → 消息外发，已被 SecureClaw Rule 8 拦截。
+
 ## 定时任务
 
 ```bash
