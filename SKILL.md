@@ -1,7 +1,8 @@
 ---
 name: openclaw-security
-version: "2.0.3"
-description: OpenClaw 安全加固与监控 Skill。覆盖 9 层防御体系：群聊白名单、文件隔离、DM 配对、网络隔离、隐私隔离、目录权限、Cron 隔离、自动审计、配置版本管理。支持单次审计/加固、每日定时检查。
+version: "2.1.0"
+description: "OpenClaw security hardening & continuous monitoring. 9-layer defense, 15 automated checks, auto-hardening, config versioning. Supports one-shot audit/harden and daily cron."
+description_zh: "OpenClaw 安全加固与持续监控。9 层防御体系、15 项自动检查、自动加固、配置版本管理。支持单次审计/加固和每日定时检查。"
 tags: [security, audit, hardening, openclaw, monitoring, credentials, privacy]
 category: security
 author: MiniClaw
@@ -9,48 +10,42 @@ author: MiniClaw
 
 # OpenClaw Security Skill
 
-OpenClaw 安全加固与持续监控。三阶段方案融合为一个 Skill。
+Security hardening and continuous monitoring for OpenClaw. Three phases unified into one skill.
 
-## 触发条件
+> 🇨🇳 中文文档：[SKILL.zh-CN.md](./SKILL.zh-CN.md)
 
-当用户说以下关键词时激活此 Skill：
-- 安全审计、安全检查、security audit
-- 安全加固、security hardening
-- 检查配置安全、检查凭据
+## Triggers
 
-## ⚠️ 路径说明
+Activate when user says:
+- security audit, security check, 安全审计, 安全检查
+- security hardening, 安全加固
+- check config security, check credentials
 
-本 Skill 的脚本位于 `skills/openclaw-security/scripts/` 目录下。
+## Path Setup
 
-**第一步：确定脚本路径**
+Scripts live in `skills/openclaw-security/scripts/`.
 
-执行以下命令找到本 SKILL.md 所在目录：
+**Step 1 — resolve the skill path:**
+
 ```bash
-# 方法 1：如果知道 workspace 路径
 SKILL_DIR=~/.openclaw/workspace/skills/openclaw-security
 
-# 方法 2：通过 find 查找
+# Or discover it dynamically:
 find ~/.openclaw/workspace/skills -name "SKILL.md" -path "*/openclaw-security/*" -exec dirname {} \;
 ```
 
-后续所有命令使用 `$SKILL_DIR` 变量代替路径。
+Use `$SKILL_DIR` for all subsequent commands.
 
-## ⚠️ 配置修改规范（必读）
+## ⚠️ Config Modification Rules (Critical)
 
-**修改 `openclaw.json` 前，必须严格遵守以下规范。错误的 JSON 结构会导致 Gateway 崩溃。**
+**Wrong JSON structure will crash the Gateway. Follow this template exactly.**
 
-### 安全加固配置模板
-
-以下是 `openclaw.json` 中所有安全相关字段的**正确结构**：
+### Correct Security Config Template
 
 ```json
 {
   "channels": {
     "feishu": {
-      "enabled": true,
-      "appId": "cli_xxx",
-      "appSecret": "xxx",
-      "domain": "feishu",
       "groupPolicy": "allowlist",
       "groupAllowFrom": ["ou_xxxxxxxxxxxxxxxx"],
       "dmPolicy": "pairing"
@@ -79,143 +74,126 @@ find ~/.openclaw/workspace/skills -name "SKILL.md" -path "*/openclaw-security/*"
 }
 ```
 
-### 常见错误
+### Common Mistakes
 
-| 错误写法 | 正确写法 | 说明 |
-|---------|---------|------|
-| `"sandbox": "off"` | `"sandbox": { "mode": "off" }` | sandbox 必须是对象 |
-| `"sandbox": "inherit"` | `"sandbox": { "mode": "inherit" }` | 同上 |
-| `"fs": true` | `"fs": { "workspaceOnly": true }` | fs 必须是对象 |
-| `"auth": "token"` | `"auth": { "mode": "token", "token": "xxx" }` | auth 必须是对象 |
+| Wrong | Correct | Why |
+|-------|---------|-----|
+| `"sandbox": "off"` | `"sandbox": { "mode": "off" }` | sandbox must be object |
+| `"sandbox": "inherit"` | `"sandbox": { "mode": "inherit" }` | same |
+| `"fs": true` | `"fs": { "workspaceOnly": true }` | fs must be object |
+| `"auth": "token"` | `"auth": { "mode": "token", "token": "xxx" }` | auth must be object |
 
-### 修改流程
+### Safe Edit Procedure
 
-1. **备份**：修改前执行 `cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak`
-2. **修改**：使用 `edit` 工具精确替换，不要重写整个文件
-3. **验证**：修改后执行 `python3 -c "import json; json.load(open('$HOME/.openclaw/openclaw.json'))"` 确认 JSON 合法
-4. **重启**：`openclaw gateway restart`
+1. **Backup**: `cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak`
+2. **Edit**: use `edit` tool for precise replacement — never rewrite the whole file
+3. **Validate**: `python3 -c "import json; json.load(open('$HOME/.openclaw/openclaw.json'))"`
+4. **Restart**: `openclaw gateway restart`
 
-## 使用方式
+## Usage
 
-### 单次运行
+### One-shot
 
-告诉 agent：`运行安全审计` 或 `执行安全加固`
+Tell agent: `Run security audit` or `Execute security hardening`
 
-### 每日定时检查
+### Daily cron
 
-通过 cron 添加每日任务：
 ```bash
 openclaw cron add \
   --name "openclaw-security-daily" \
   --cron "0 3 * * *" \
   --tz "Asia/Shanghai" \
-  --message "运行 OpenClaw 安全检查，如有 CRITICAL 或 HIGH 问题报告给主人" \
+  --message "Run OpenClaw security check. Report any CRITICAL or HIGH findings to owner." \
   --session isolated \
   --announce \
   --timeout-seconds 180
 ```
 
-## 执行流程
+## Execution Flow
 
-按以下顺序执行三个阶段：
+### Phase 1 — Config Security Verification
 
-### 阶段一：配置安全校验
-
-**1. 设置路径：**
-```bash
-SKILL_DIR=~/.openclaw/workspace/skills/openclaw-security
-```
-
-**2. 运行审计：**
 ```bash
 bash "$SKILL_DIR/scripts/audit.sh" --config
 ```
 
-检查项：
-- `groupPolicy` = `allowlist`（群聊白名单）
-- `groupAllowFrom` 包含主人 open_id
-- `dmPolicy` = `pairing`（私聊配对）
-- `tools.fs.workspaceOnly` = `true`（文件隔离）
-- `gateway.bind` = `loopback`（网络隔离）
-- `gateway.auth.mode` = `token`（Token 认证）
-- `sandbox.mode` 已声明
+Checks:
+- `groupPolicy` = `allowlist`
+- `groupAllowFrom` contains owner's open_id
+- `dmPolicy` = `pairing`
+- `tools.fs.workspaceOnly` = `true`
+- `gateway.bind` = `loopback`
+- `gateway.auth.mode` = `token`
+- `sandbox.mode` is declared (object, not string)
 
-如发现问题，询问用户是否执行加固：
+If issues found, ask user before hardening:
 ```bash
 bash "$SKILL_DIR/scripts/harden.sh"
 ```
 
-### 阶段二：深度安全审计
+### Phase 2 — Deep Security Audit
 
 ```bash
 bash "$SKILL_DIR/scripts/audit.sh" --full
 ```
 
-检查项：
-1. **凭据泄露扫描** — Workspace 中是否有 API Key/Token/密码泄露
-2. **目录权限检查** — 关键目录 700、关键文件 600
-3. **.gitignore 验证** — 敏感文件模式是否受保护
-4. **Git 历史扫描** — 历史提交中是否有凭据
-5. **Cron 任务审计** — 定时任务是否使用 isolated session
-6. **网络暴露检查** — Gateway 是否仅绑定 loopback
-7. **隐私数据审查** — MEMORY.md 是否可能在群聊中泄露
+Checks:
+1. Credential leak scan — API keys/tokens/passwords in workspace
+2. Directory permissions — dirs 700, files 600
+3. `.gitignore` validation — sensitive patterns protected
+4. Git history scan — secrets in commit history
+5. Cron task audit — isolated session usage
+6. Network exposure — gateway bound to loopback only
+7. Credential age — `.env` older than 90 days
 
-### 阶段三：自动化与版本管理
+### Phase 3 — Automation & Versioning
 
-1. **配置版本备份**
+1. **Config backup**
 ```bash
 bash "$SKILL_DIR/scripts/config-backup.sh"
 ```
 
-2. **凭据健康检查** — 检查凭据文件年龄，超过 90 天提醒轮换
+2. **Credential health** — warn if credentials older than 90 days
 
-3. **确认定时任务存在** — 检查是否已配置每日/每周安全 cron
+3. **Cron coverage** — verify security cron jobs exist
 
-## 报告格式
-
-执行完成后，生成报告并发送给用户：
+## Report Format
 
 ```
-## 📊 OpenClaw 安全审计报告
+## 📊 OpenClaw Security Audit Report
 
-**时间：** YYYY-MM-DD HH:MM
-**结果：** ✅ 通过 / ⚠️ 存在问题
+**Time:** YYYY-MM-DD HH:MM
+**Result:** ✅ Passed / ⚠️ Issues Found
 
-### 审计结果
-| 检查项 | 状态 | 说明 |
-|--------|------|------|
-| 配置安全 | ✅/❌ | ... |
-| 凭据扫描 | ✅/❌ | ... |
-| 目录权限 | ✅/❌ | ... |
+| Check | Status | Detail |
+|-------|--------|--------|
+| Config Security | ✅/❌ | ... |
+| Credential Scan | ✅/❌ | ... |
 | ... | ... | ... |
 
-### 九层防御体系
-- ✅ 第1层：群聊白名单
-- ✅ 第2层：文件隔离
-- ...
-
-### 建议
-- 如有发现，列出具体修复建议
+### Recommendations
+- Fix suggestions here
 ```
 
-如有 CRITICAL/HIGH 发现，立即通知用户，不要等待。
+Report CRITICAL/HIGH findings immediately — do not wait.
 
-## 自动修复
+## Auto-fix Policy
 
-仅自动修复以下低风险项目（无需确认）：
-- 目录权限收紧（chmod 700/600）
-- 配置备份
+**Safe to auto-fix (no confirmation needed):**
+- Directory permission tightening (chmod 700/600)
+- Config structure type errors (string → object)
+- Config backup
 
-以下操作需用户确认：
-- 修改 openclaw.json 配置
-- 重启 Gateway
-- 轮换凭据
+**Requires user confirmation:**
+- Modifying `openclaw.json` fields
+- Gateway restart
+- Credential rotation
 
-## 严重级别定义
+## Severity Levels
 
-| 级别 | 含义 | 响应 |
-|------|------|------|
-| 🔴 CRITICAL | 凭据泄露、配置被篡改 | 立即通知 + 建议修复 |
-| 🟠 HIGH | 权限过松、网络暴露 | 通知 + 等待确认 |
-| 🟡 WARN | .gitignore 缺失、凭据老化 | 报告中列出 |
-| ✅ PASS | 检查通过 | 静默通过 |
+| Level | Meaning | Response |
+|-------|---------|----------|
+| 🔴 CRITICAL | Credential leak, config tampered | Immediate alert + fix suggestion |
+| 🟠 HIGH | Loose permissions, network exposed | Alert + wait for confirmation |
+| 🟡 WARN | Missing .gitignore, aging credentials | Report only |
+| ✅ PASS | Check passed | Silent |
