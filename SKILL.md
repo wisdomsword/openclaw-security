@@ -1,6 +1,6 @@
 ---
 name: openclaw-security
-version: "2.0.0"
+version: "2.0.2"
 description: OpenClaw 安全加固与监控 Skill。覆盖 9 层防御体系：群聊白名单、文件隔离、DM 配对、网络隔离、隐私隔离、目录权限、Cron 隔离、自动审计、配置版本管理。支持单次审计/加固、每日定时检查。
 tags: [security, audit, hardening, openclaw, monitoring, credentials, privacy]
 category: security
@@ -18,6 +18,23 @@ OpenClaw 安全加固与持续监控。三阶段方案融合为一个 Skill。
 - 安全加固、security hardening
 - 检查配置安全、检查凭据
 
+## ⚠️ 路径说明
+
+本 Skill 的脚本位于 `skills/openclaw-security/scripts/` 目录下。
+
+**第一步：确定脚本路径**
+
+执行以下命令找到本 SKILL.md 所在目录：
+```bash
+# 方法 1：如果知道 workspace 路径
+SKILL_DIR=~/.openclaw/workspace/skills/openclaw-security
+
+# 方法 2：通过 find 查找
+find ~/.openclaw/workspace/skills -name "SKILL.md" -path "*/openclaw-security/*" -exec dirname {} \;
+```
+
+后续所有命令使用 `$SKILL_DIR` 变量代替路径。
+
 ## 使用方式
 
 ### 单次运行
@@ -32,7 +49,7 @@ openclaw cron add \
   --name "openclaw-security-daily" \
   --cron "0 3 * * *" \
   --tz "Asia/Shanghai" \
-  --message "运行 OpenClaw 安全检查，如有 CRITICAL 或 HIGH 问题报告给 Michael" \
+  --message "运行 OpenClaw 安全检查，如有 CRITICAL 或 HIGH 问题报告给主人" \
   --session isolated \
   --announce \
   --timeout-seconds 180
@@ -44,9 +61,14 @@ openclaw cron add \
 
 ### 阶段一：配置安全校验
 
-用 exec 运行：
+**1. 设置路径：**
 ```bash
-bash SKILL_DIR/scripts/audit.sh --config
+SKILL_DIR=~/.openclaw/workspace/skills/openclaw-security
+```
+
+**2. 运行审计：**
+```bash
+bash "$SKILL_DIR/scripts/audit.sh" --config
 ```
 
 检查项：
@@ -60,14 +82,13 @@ bash SKILL_DIR/scripts/audit.sh --config
 
 如发现问题，询问用户是否执行加固：
 ```bash
-bash SKILL_DIR/scripts/harden.sh
+bash "$SKILL_DIR/scripts/harden.sh"
 ```
 
 ### 阶段二：深度安全审计
 
-用 exec 运行：
 ```bash
-bash SKILL_DIR/scripts/audit.sh --full
+bash "$SKILL_DIR/scripts/audit.sh" --full
 ```
 
 检查项：
@@ -83,7 +104,7 @@ bash SKILL_DIR/scripts/audit.sh --full
 
 1. **配置版本备份**
 ```bash
-bash SKILL_DIR/scripts/config-backup.sh
+bash "$SKILL_DIR/scripts/config-backup.sh"
 ```
 
 2. **凭据健康检查** — 检查凭据文件年龄，超过 90 天提醒轮换
