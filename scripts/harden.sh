@@ -1,226 +1,58 @@
 #!/bin/bash
-# OpenClaw Auto-Hardening Script — Cross-platform (macOS + Linux)
-# Fixes common security issues automatically
+# OpenClaw Auto-Hardening — Cross-platform
 # Usage: bash harden.sh [--dry-run]
+set -uo pipefail
 
-set -euo pipefail
+SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+OC="$HOME/.openclaw"; WS="$OC/workspace"; CF="$OC/openclaw.json"
+DRY="${1:-}"; N=0
 
-OPENCLAW_DIR="$HOME/.openclaw"
-WORKSPACE="$OPENCLAW_DIR/workspace"
-CONFIG="$OPENCLAW_DIR/openclaw.json"
-DRY_RUN="${1:-}"
-FIXED=0
+perm() { stat -f "%Sp" "$1" 2>/dev/null || stat -c "%A" "$1" 2>/dev/null || echo "?"; }
+fix()  { [ "$DRY" = "--dry-run" ] && echo "🔍 [DRY] $1" || { echo "🔧 $1"; N=$((N+1)); }; }
 
-# Cross-platform permission getter
-get_perm() {
-    stat -f "%Sp" "$1" 2>/dev/null || stat -c "%A" "$1" 2>/dev/null || echo "UNKNOWN"
-}
+echo "🛡️ OpenClaw Hardening$([ "$DRY" = "--dry-run" ] && echo " (dry-run)")"
 
-fix() {
-    local desc="$1"
-    if [ "$DRY_RUN" = "--dry-run" ]; then
-        echo "🔍 [DRY RUN] Would fix: $desc"
-    else
-        echo "🔧 Fixed: $desc"
-        FIXED=$((FIXED+1))
-    fi
-}
-
-echo "🛡️ OpenClaw Security Hardening"
-echo "   Started: $(date '+%Y-%m-%d %H:%M')"
-[ "$DRY_RUN" = "--dry-run" ] && echo "   Mode: DRY RUN (no changes)"
-echo ""
-
-# ═══════════════════════════════════════
-# Pre-flight
-# ═══════════════════════════════════════
-if [ ! -d "$OPENCLAW_DIR" ]; then
-    echo "❌ OpenClaw directory not found: $OPENCLAW_DIR"
-    exit 1
-fi
-
-if [ ! -f "$CONFIG" ]; then
-    echo "❌ Config file not found: $CONFIG"
-    exit 1
-fi
-
-# ═══════════════════════════════════════
-# Fix 1: Directory Permissions
-# ═══════════════════════════════════════
-echo "═══ Directory Permissions ═══"
-for d in "$OPENCLAW_DIR/credentials" "$OPENCLAW_DIR/identity" \
-         "$OPENCLAW_DIR/logs" "$OPENCLAW_DIR/browser" "$WORKSPACE/memory"; do
-    if [ -d "$d" ]; then
-        perm=$(get_perm "$d")
-        if [ "$perm" = "drwx------" ] || [ "$perm" = "700" ]; then
-            echo "  ✅ $d: $perm"
-        else
-            if [ "$DRY_RUN" != "--dry-run" ]; then
-                chmod 700 "$d"
-            fi
-            fix "Directory $d: $perm → 700"
-        fi
-    else
-        echo "  ⏭️  $d: not found (skipped)"
-    fi
+# 1. Directory permissions
+for d in "$OC/credentials" "$OC/identity" "$OC/logs" "$OC/browser" "$WS/memory"; do
+    [ -d "$d" ] || continue; p=$(perm "$d")
+    [[ "$p" = "drwx------" || "$p" = "700" ]] && echo "  ✅ $(basename $d)" || {
+        [ "$DRY" != "--dry-run" ] && chmod 700 "$d"; fix "$(basename $d): $p → 700"; }
 done
 
-# ═══════════════════════════════════════
-# Fix 2: File Permissions
-# ═══════════════════════════════════════
-echo ""
-echo "═══ File Permissions ═══"
-for f in "$CONFIG" "$OPENCLAW_DIR/.env"; do
-    if [ -f "$f" ]; then
-        perm=$(get_perm "$f")
-        if [ "$perm" = "-rw-------" ] || [ "$perm" = "600" ]; then
-            echo "  ✅ $f: $perm"
-        else
-            if [ "$DRY_RUN" != "--dry-run" ]; then
-                chmod 600 "$f"
-            fi
-            fix "File $f: $perm → 600"
-        fi
-    else
-        echo "  ⏭️  $f: not found (skipped)"
-    fi
+# 2. File permissions
+for f in "$CF" "$OC/.env"; do
+    [ -f "$f" ] || continue; p=$(perm "$f")
+    [[ "$p" = "-rw-------" || "$p" = "600" ]] && echo "  ✅ $(basename $f)" || {
+        [ "$DRY" != "--dry-run" ] && chmod 600 "$f"; fix "$(basename $f): $p → 600"; }
 done
 
-# ═══════════════════════════════════════
-# Fix 3: Validate and fix config structure
-# ═══════════════════════════════════════
+# 3. Config structure validation & fix
 echo ""
-echo "═══ Config Structure Validation ═══"
-if command -v python3 &>/dev/null; then
-    python3 - "$CONFIG" "$DRY_RUN" <<'PYEOF'
-import json, sys
+"$SKILL_DIR/scripts/check-config.sh" $([ "$DRY" = "--dry-run" ] && echo "" || echo "--fix")
 
-config_path = sys.argv[1]
-dry_run = sys.argv[2] == "--dry-run"
-
-with open(config_path) as f:
-    d = json.load(f)
-
-fixed = False
-
-# Check sandbox is object, not string
-agents = d.get("agents", {}).get("defaults", {})
-sandbox = agents.get("sandbox")
-if isinstance(sandbox, str):
-    if not dry_run:
-        agents["sandbox"] = {"mode": sandbox}
-        fixed = True
-    print(f"🔧 {'Would fix' if dry_run else 'Fixed'}: sandbox: \"{sandbox}\" → {{ \"mode\": \"{sandbox}\" }}")
-
-# Check tools.fs is object, not bool
-tools = d.get("tools", {})
-fs = tools.get("fs")
-if isinstance(fs, bool):
-    if not dry_run:
-        tools["fs"] = {"workspaceOnly": fs}
-        fixed = True
-    print(f"🔧 {'Would fix' if dry_run else 'Fixed'}: tools.fs: {fs} → {{ \"workspaceOnly\": {fs} }}")
-
-# Check gateway.auth is object, not string
-gw = d.get("gateway", {})
-auth = gw.get("auth")
-if isinstance(auth, str):
-    if not dry_run:
-        gw["auth"] = {"mode": auth}
-        fixed = True
-    print(f"🔧 {'Would fix' if dry_run else 'Fixed'}: gateway.auth: \"{auth}\" → {{ \"mode\": \"{auth}\" }}")
-
-if not fixed:
-    print("  ✅ Config structure valid")
-
-if fixed and not dry_run:
-    with open(config_path, "w") as f:
-        json.dump(d, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-    print("  💾 Config saved")
-PYEOF
-else
-    echo "  ⏭️  python3 not available — skipping config validation"
-fi
-
-# ═══════════════════════════════════════
-# Fix 4: Create .gitignore if missing
-# ═══════════════════════════════════════
+# 4. .gitignore
 echo ""
-echo "═══ Gitignore ═══"
-if [ ! -f "$WORKSPACE/.gitignore" ]; then
-    if [ "$DRY_RUN" != "--dry-run" ]; then
-        cat > "$WORKSPACE/.gitignore" <<'EOF'
-# OpenClaw workspace .gitignore
-# Prevent accidental commit of sensitive data
-
-# Credentials and secrets
-*.env
-.env.*
-*.pem
-*.key
-*.p12
-*.pfx
-
-# OpenClaw internal files
-.openclaw/
-
-# Memory files (may contain personal data)
-memory/
-MEMORY.md
-
-# Browser data
-browser/
-
-# Logs
-*.log
-*.log.*
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Editor files
-*.swp
-*.swo
-*~
+[ -f "$WS/.gitignore" ] && echo "  ✅ .gitignore exists" || {
+    [ "$DRY" != "--dry-run" ] && cat > "$WS/.gitignore" <<'EOF'
+# OpenClaw workspace
+*.env .env.* *.pem *.key *.p12 *.pfx
+.openclaw/ memory/ MEMORY.md browser/
+*.log *.log.* .DS_Store Thumbs.db *.swp *.swo *~
 EOF
-    fi
-    fix "Created .gitignore with sensitive file patterns"
-else
-    echo "  ✅ .gitignore exists"
-fi
+    fix "Created .gitignore"; }
 
-# ═══════════════════════════════════════
-# Fix 5: Config backup
-# ═══════════════════════════════════════
+# 5. Config backup
 echo ""
-echo "═══ Config Backup ═══"
-BACKUP_DIR="$OPENCLAW_DIR/config-history"
-if [ "$DRY_RUN" != "--dry-run" ]; then
-    mkdir -p "$BACKUP_DIR"
-    TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-    cp "$CONFIG" "$BACKUP_DIR/openclaw.json.$TIMESTAMP"
-    # Keep last 10
-    count=$(ls -1 "$BACKUP_DIR"/openclaw.json.* 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$count" -gt 10 ]; then
-        remove=$((count - 10))
-        ls -1t "$BACKUP_DIR"/openclaw.json.* | tail -n "$remove" | xargs rm -f
-        echo "🧹 Cleaned up $remove old backups"
-    fi
-    fix "Config backed up to openclaw.json.$TIMESTAMP"
-else
-    echo "  🔍 [DRY RUN] Would backup config"
-fi
+BACKUP_DIR="$OC/config-history"
+if [ "$DRY" != "--dry-run" ]; then
+    mkdir -p "$BACKUP_DIR"; ts=$(date +%Y%m%d-%H%M%S)
+    cp "$CF" "$BACKUP_DIR/openclaw.json.$ts"
+    cnt=$(ls -1 "$BACKUP_DIR"/openclaw.json.* 2>/dev/null | wc -l | tr -d ' ')
+    [ "$cnt" -gt 10 ] && { rm=$(ls -1t "$BACKUP_DIR"/openclaw.json.* | tail -n $((cnt-10))); [ -n "$rm" ] && echo "$rm" | xargs rm -f; }
+    fix "Config backed up → openclaw.json.$ts"
+else echo "  🔍 [DRY] Would backup config"; fi
 
-# ═══════════════════════════════════════
-# Summary
-# ═══════════════════════════════════════
 echo ""
 echo "═══════════════════════════════════════"
-if [ "$DRY_RUN" = "--dry-run" ]; then
-    echo "  🔍 DRY RUN complete — no changes made"
-else
-    echo "  🛡️ Hardening complete — $FIXED fixes applied"
-fi
+echo "  🛡️ Done — $N fix(es) applied"
 echo "═══════════════════════════════════════"

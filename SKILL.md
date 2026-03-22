@@ -1,199 +1,74 @@
 ---
 name: openclaw-security
-version: "2.1.0"
-description: "OpenClaw security hardening & continuous monitoring. 9-layer defense, 15 automated checks, auto-hardening, config versioning. Supports one-shot audit/harden and daily cron."
-description_zh: "OpenClaw 安全加固与持续监控。9 层防御体系、15 项自动检查、自动加固、配置版本管理。支持单次审计/加固和每日定时检查。"
-tags: [security, audit, hardening, openclaw, monitoring, credentials, privacy]
+version: "2.2.0"
+description: "OpenClaw security hardening & monitoring. 9-layer defense, 15 checks, auto-harden, config versioning."
+description_zh: "OpenClaw 安全加固与监控。9 层防御、15 项检查、自动加固、配置版本管理。"
+tags: [security, audit, hardening, openclaw]
 category: security
 author: MiniClaw
 ---
 
-# OpenClaw Security Skill
+# OpenClaw Security
 
-Security hardening and continuous monitoring for OpenClaw. Three phases unified into one skill.
-
-> 🇨🇳 中文文档：[SKILL.zh-CN.md](./SKILL.zh-CN.md)
+> 🇨🇳 [中文](./SKILL.zh-CN.md)
 
 ## Triggers
 
-Activate when user says:
-- security audit, security check, 安全审计, 安全检查
-- security hardening, 安全加固
-- check config security, check credentials
+`security audit`, `安全审计`, `security hardening`, `安全加固`, `check config security`
 
-## Path Setup
-
-Scripts live in `skills/openclaw-security/scripts/`.
-
-**Step 1 — resolve the skill path:**
+## Quick Start
 
 ```bash
 SKILL_DIR=~/.openclaw/workspace/skills/openclaw-security
 
-# Or discover it dynamically:
-find ~/.openclaw/workspace/skills -name "SKILL.md" -path "*/openclaw-security/*" -exec dirname {} \;
+# Full audit → harden → backup (one command)
+bash "$SKILL_DIR/scripts/run.sh"
+
+# Or step by step:
+bash "$SKILL_DIR/scripts/audit.sh" --full    # audit only
+bash "$SKILL_DIR/scripts/harden.sh"           # audit + auto-fix
+bash "$SKILL_DIR/scripts/check-config.sh"     # validate config structure
+bash "$SKILL_DIR/scripts/config-backup.sh"    # backup config
 ```
 
-Use `$SKILL_DIR` for all subsequent commands.
+## What It Does
 
-## ⚠️ Config Modification Rules (Critical)
-
-**Wrong JSON structure will crash the Gateway. Follow this template exactly.**
-
-### Correct Security Config Template
-
-```json
-{
-  "channels": {
-    "feishu": {
-      "groupPolicy": "allowlist",
-      "groupAllowFrom": ["ou_xxxxxxxxxxxxxxxx"],
-      "dmPolicy": "pairing"
-    }
-  },
-  "tools": {
-    "profile": "full",
-    "fs": {
-      "workspaceOnly": true
-    }
-  },
-  "agents": {
-    "defaults": {
-      "sandbox": {
-        "mode": "off"
-      }
-    }
-  },
-  "gateway": {
-    "bind": "loopback",
-    "auth": {
-      "mode": "token",
-      "token": "your-token-here"
-    }
-  }
-}
-```
-
-### Common Mistakes
-
-| Wrong | Correct | Why |
-|-------|---------|-----|
-| `"sandbox": "off"` | `"sandbox": { "mode": "off" }` | sandbox must be object |
-| `"sandbox": "inherit"` | `"sandbox": { "mode": "inherit" }` | same |
-| `"fs": true` | `"fs": { "workspaceOnly": true }` | fs must be object |
-| `"auth": "token"` | `"auth": { "mode": "token", "token": "xxx" }` | auth must be object |
-
-### Safe Edit Procedure
-
-1. **Backup**: `cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak`
-2. **Edit**: use `edit` tool for precise replacement — never rewrite the whole file
-3. **Validate**: `python3 -c "import json; json.load(open('$HOME/.openclaw/openclaw.json'))"`
-4. **Restart**: `openclaw gateway restart`
-
-## Usage
-
-### One-shot
-
-Tell agent: `Run security audit` or `Execute security hardening`
-
-### Daily cron
-
-```bash
-openclaw cron add \
-  --name "openclaw-security-daily" \
-  --cron "0 3 * * *" \
-  --tz "Asia/Shanghai" \
-  --message "Run OpenClaw security check. Report any CRITICAL or HIGH findings to owner." \
-  --session isolated \
-  --announce \
-  --timeout-seconds 180
-```
-
-## Execution Flow
-
-### Phase 1 — Config Security Verification
-
-```bash
-bash "$SKILL_DIR/scripts/audit.sh" --config
-```
-
-Checks:
-- `groupPolicy` = `allowlist`
-- `groupAllowFrom` contains owner's open_id
-- `dmPolicy` = `pairing`
-- `tools.fs.workspaceOnly` = `true`
-- `gateway.bind` = `loopback`
-- `gateway.auth.mode` = `token`
-- `sandbox.mode` is declared (object, not string)
-
-If issues found, ask user before hardening:
-```bash
-bash "$SKILL_DIR/scripts/harden.sh"
-```
-
-### Phase 2 — Deep Security Audit
-
-```bash
-bash "$SKILL_DIR/scripts/audit.sh" --full
-```
-
-Checks:
-1. Credential leak scan — API keys/tokens/passwords in workspace
-2. Directory permissions — dirs 700, files 600
-3. `.gitignore` validation — sensitive patterns protected
-4. Git history scan — secrets in commit history
-5. Cron task audit — isolated session usage
-6. Network exposure — gateway bound to loopback only
-7. Credential age — `.env` older than 90 days
-
-### Phase 3 — Automation & Versioning
-
-1. **Config backup**
-```bash
-bash "$SKILL_DIR/scripts/config-backup.sh"
-```
-
-2. **Credential health** — warn if credentials older than 90 days
-
-3. **Cron coverage** — verify security cron jobs exist
-
-## Report Format
-
-```
-## 📊 OpenClaw Security Audit Report
-
-**Time:** YYYY-MM-DD HH:MM
-**Result:** ✅ Passed / ⚠️ Issues Found
-
-| Check | Status | Detail |
+| Phase | Script | Checks |
 |-------|--------|--------|
-| Config Security | ✅/❌ | ... |
-| Credential Scan | ✅/❌ | ... |
-| ... | ... | ... |
+| 1. Config | `audit.sh --config` | groupPolicy, workspaceOnly, bind, auth, sandbox structure |
+| 2. Deep | `audit.sh --full` | credentials, permissions, .gitignore, git history, cron, network |
+| 3. Health | `run.sh --full` | credential age, cron coverage, config backup |
 
-### Recommendations
-- Fix suggestions here
-```
+## Auto-fix
 
-Report CRITICAL/HIGH findings immediately — do not wait.
-
-## Auto-fix Policy
-
-**Safe to auto-fix (no confirmation needed):**
-- Directory permission tightening (chmod 700/600)
-- Config structure type errors (string → object)
+`harden.sh` auto-fixes (no confirmation needed):
+- Directory/file permissions (→ 700/600)
+- Config type errors (string→object for sandbox/fs/auth)
+- Missing .gitignore
 - Config backup
 
-**Requires user confirmation:**
-- Modifying `openclaw.json` fields
-- Gateway restart
-- Credential rotation
+Requires user confirmation: `openclaw.json` field changes, gateway restart, credential rotation.
 
-## Severity Levels
+## Config Safety
 
-| Level | Meaning | Response |
-|-------|---------|----------|
-| 🔴 CRITICAL | Credential leak, config tampered | Immediate alert + fix suggestion |
-| 🟠 HIGH | Loose permissions, network exposed | Alert + wait for confirmation |
-| 🟡 WARN | Missing .gitignore, aging credentials | Report only |
-| ✅ PASS | Check passed | Silent |
+`check-config.sh` validates and auto-fixes config structure. Common errors it catches:
+- `"sandbox": "off"` → `{ "mode": "off" }`
+- `"fs": true` → `{ "workspaceOnly": true }`
+- `"auth": "token"` → `{ "mode": "token" }`
+
+Full template: `check-config.sh` shows the correct structure.
+
+## Cron Setup
+
+```bash
+openclaw cron add --name openclaw-security --cron "0 3 * * *" --tz Asia/Shanghai \
+  --message "Run security audit. Report CRITICAL/HIGH to owner." \
+  --session isolated --announce --timeout 180
+```
+
+## Severity
+
+| 🔴 CRITICAL | 🟠 HIGH | 🟡 WARN | ✅ PASS |
+|---|---|---|---|
+| Credential leak, config tampered | Loose perms, network exposed | Missing .gitignore, aging creds | OK |
+| → Immediate alert | → Alert + confirm | → Report | → Silent |
